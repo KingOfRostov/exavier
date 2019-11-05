@@ -7,7 +7,7 @@ defmodule Exavier do
   @timeouts %{
     mutate_module: 5000,
     mutate_everything: 60_000,
-    report: 1000
+    report: 1000,
   }
 
   def file_to_quoted(file) do
@@ -25,24 +25,41 @@ defmodule Exavier do
   end
 
   def test_file_to_module(test_file) do
-    case Application.get_env(:exavier, :test_file_to_module_func) do
-      [module, func_atom] ->
-        apply(module, func_atom, [test_file])
-
-      _ ->
-        test_file
-        |> String.trim_leading("test/")
-        |> String.trim_trailing("_test.exs")
-        |> String.trim_trailing("_test.ex")
-        |> trim_web_modules()
-        |> String.split("/")
-        |> Enum.map(&Macro.camelize(&1))
-        |> Enum.join(".")
-        |> string_to_elixir_module()
-    end
+    [module, func_atom]  = Application.get_env(:exavier, :test_file_to_module_func)
+    apply(module, func_atom, [test_file])
   end
 
-  def trim_web_modules(test_file) do
+
+  def test_file_to_module_func(test_file) do
+    test_file
+    |> trim_test_parts()
+    |> string_to_module_format()
+    |> string_to_elixir_module()
+  end
+
+  def test_file_to_phoenix_module_func(test_file) do
+    test_file
+    |> trim_test_parts()
+    |> trim_phoenix_modules()
+    |> string_to_module_format()
+    |> string_to_elixir_module()
+  end
+
+  def trim_test_parts(test_file) do
+    test_file
+    |> String.trim_leading("test/")
+    |> String.trim_trailing("_test.exs")
+    |> String.trim_trailing("_test.ex")
+  end
+
+  def string_to_module_format(string_path) do
+    string_path
+    |> String.split("/")
+    |> Enum.map(&Macro.camelize(&1))
+    |> Enum.join(".")
+  end
+
+  def trim_phoenix_modules(test_file) do
     test_file
     |> String.replace("/controllers/", "/")
     |> String.replace("/views/", "/")
@@ -65,8 +82,8 @@ defmodule Exavier do
 
   def quoted_to_string(args, lines) when is_list(args) do
     args
-    |> Enum.map(&quoted_to_string(&1, lines))
-    |> Enum.reject(&is_nil(&1))
+    |> Enum.map(& quoted_to_string(&1, lines))
+    |> Enum.reject(& is_nil(&1))
     |> List.flatten()
   end
 
@@ -104,24 +121,20 @@ defmodule Exavier do
   def mutate_all(ast, mutator, lines_to_mutate, already_mutated_lines \\ [])
 
   def mutate_all(
-        {:defmodule, mod_meta, [{:__aliases__, alias_meta, [module_name]}, do_block]},
-        mutator,
-        lines_to_mutate,
-        already_mutated_lines
-      ) do
+    {:defmodule, mod_meta, [{:__aliases__, alias_meta, [module_name]}, do_block]},
+    mutator, lines_to_mutate, already_mutated_lines
+  ) do
     {mutated_lines, mutated_do_block} =
       mutate_all(do_block, mutator, lines_to_mutate, already_mutated_lines)
 
     {mutated_lines,
-     {:defmodule, mod_meta, [{:__aliases__, alias_meta, [module_name]}, mutated_do_block]}}
+      {:defmodule, mod_meta, [{:__aliases__, alias_meta, [module_name]}, mutated_do_block]}}
   end
 
   def mutate_all(
-        [{operator, body} | rest],
-        mutator,
-        lines_to_mutate,
-        already_mutated_lines
-      ) do
+    [{operator, body} | rest],
+    mutator, lines_to_mutate, already_mutated_lines
+  ) do
     {mutated_lines_body, mutated_body} =
       mutate_all(body, mutator, lines_to_mutate, already_mutated_lines)
 
@@ -132,11 +145,8 @@ defmodule Exavier do
   end
 
   def mutate_all(
-        {operator, meta, args} = ast,
-        mutator,
-        lines_to_mutate,
-        already_mutated_lines
-      ) do
+    {operator, meta, args} = ast, mutator, lines_to_mutate, already_mutated_lines
+  ) do
     case Enum.member?(lines_to_mutate, meta[:line]) do
       true ->
         case apply(mutator, :mutate, [ast, lines_to_mutate]) do
@@ -148,7 +158,7 @@ defmodule Exavier do
 
           mutated_ast ->
             mutated_lines =
-              (already_mutated_lines ++ [meta[:line]])
+              already_mutated_lines ++ [meta[:line]]
               |> Enum.uniq()
 
             {mutated_lines, mutated_ast}
@@ -163,17 +173,13 @@ defmodule Exavier do
   end
 
   def mutate_all([head | rest], mutator, lines_to_mutate, already_mutated_lines) do
-    {mutated_lines_head, mutated_head} =
-      mutate_all(head, mutator, lines_to_mutate, already_mutated_lines)
-
-    {mutated_lines_head_rest, mutated_rest} =
-      mutate_all(rest, mutator, lines_to_mutate, mutated_lines_head)
+    {mutated_lines_head, mutated_head} = mutate_all(head, mutator, lines_to_mutate, already_mutated_lines)
+    {mutated_lines_head_rest, mutated_rest} = mutate_all(rest, mutator, lines_to_mutate, mutated_lines_head)
 
     {mutated_lines_head_rest, [mutated_head | mutated_rest]}
   end
 
-  def mutate_all(any, _mutator, _lines_to_mutate, already_mutated_lines),
-    do: {already_mutated_lines, any}
+  def mutate_all(any, _mutator, _lines_to_mutate, already_mutated_lines), do: {already_mutated_lines, any}
 
   def timeout(name) do
     do_timeout(name, debug: System.get_env("EXAVIER_DEBUG"))

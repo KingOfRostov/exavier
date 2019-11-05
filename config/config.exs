@@ -8,5 +8,3 @@ config :exavier,
     "test/exavier/mutators/ror4_test.exs" => Exavier.Mutators.ROR4
   },
   threshold: 27
-
-config :exavier, test_file_to_module_func: [Exavier.File2Module, :my_func]
