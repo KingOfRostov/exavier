@@ -116,6 +116,19 @@ defmodule Exavier do
 
   def mutate_all(
     {operator, meta, args} = ast, mutator, lines_to_mutate, already_mutated_lines
+  ) when operator == :& do
+    case Enum.member?(lines_to_mutate, meta[:line]) do
+      true ->
+        {already_mutated_lines, ast}
+      _ ->
+        {mutated_lines, mutated_args} =
+        mutate_all(args, mutator, lines_to_mutate, already_mutated_lines)
+        {mutated_lines, {operator, meta, mutated_args}}
+    end
+  end
+
+  def mutate_all(
+    {operator, meta, args} = ast, mutator, lines_to_mutate, already_mutated_lines
   ) do
     case Enum.member?(lines_to_mutate, meta[:line]) do
       true ->
